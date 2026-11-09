@@ -1,0 +1,7 @@
+node_modules/
+dist/
+*.local
+.DS_Store
+
+# build artefacts we hand out manually
+gomoku-static.zip
