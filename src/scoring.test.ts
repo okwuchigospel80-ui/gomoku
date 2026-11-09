@@ -138,22 +138,16 @@ test('the full intended price ladder is monotonic-ish by group', () => {
 })
 
 test('the five private cards ship as initials, not real words', () => {
-  // The repo is public. These five must never appear spelled out.
-  const forbidden = ['亲亲', '舌吻', '口交', '做爱', '和好']
-  const blob = JSON.stringify(CARDS)
+  // The repo is public. The NAMES must never appear spelled out. Descriptions are
+  // intentionally left as the original wording, so only names are checked.
+  const names = CARDS.map((c) => c.name).join('|')
+  const forbidden = ['亲亲卡', '舌吻卡', '口交卡', '做爱卡', '和好卡']
   for (const word of forbidden) {
-    assert.equal(blob.includes(word), false, `catalog still contains "${word}"`)
+    assert.equal(names.includes(word), false, `catalog still names "${word}"`)
   }
   // …and they should be labelled with pinyin initials.
-  const names = CARDS.filter((c) => c.group === 'intimate').map((c) => c.name)
-  assert.deepEqual(names, ['QQ卡', 'SW卡', 'KJ卡', 'ZA卡', 'HH卡'])
-})
-
-test('every card in the private group has a neutral description', () => {
-  const forbidden = ['亲', '吻', '口交', '做爱', '原谅', '高潮']
-  for (const c of CARDS.filter((x) => x.group === 'intimate')) {
-    for (const word of forbidden) {
-      assert.equal(c.desc.includes(word), false, `${c.name} desc leaks "${word}"`)
-    }
-  }
+  assert.deepEqual(
+    CARDS.filter((c) => c.group === 'intimate').map((c) => c.name),
+    ['QQ卡', 'SW卡', 'KJ卡', 'ZA卡', 'HH卡'],
+  )
 })

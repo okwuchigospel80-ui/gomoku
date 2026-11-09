@@ -1,9 +1,9 @@
 // Shop catalog.
 //
 // Privacy note: this repo is public, so the five intimate cards are labelled with
-// pinyin initials only (za / kj / kj2 …) and carry bland descriptions. The real
-// mapping lives in `card-legend.md`, which is NOT committed. Everything else is
-// safe to show by name.
+// pinyin initials only (QQ / SW / KJ / ZA / HH). Their descriptions are the
+// original wording. The real name mapping lives in `card-legend.md`, which is
+// NOT committed.
 //
 // The wire payload uses only the opaque `id`, so MQTT traffic reveals nothing
 // beyond "someone bought c03".
@@ -21,12 +21,12 @@ export interface CardDef {
 }
 
 export const CARDS: readonly CardDef[] = [
-  // --- 私密向：只用首字母，描述保持中性 ---
-  { id: 'c01', name: 'QQ卡', price: 1, group: 'intimate', desc: '最轻量的一张，随取随用。' },
-  { id: 'c02', name: 'SW卡', price: 10, group: 'intimate', desc: '比 QQ 重一档，适合有心情的时候。' },
-  { id: 'c03', name: 'KJ卡', price: 20, group: 'intimate', desc: '中等档位，需要对方配合。' },
-  { id: 'c04', name: 'ZA卡', price: 50, group: 'intimate', desc: '高额卡，留到特别的日子。' },
-  { id: 'c05', name: 'HH卡', price: 100, group: 'intimate', desc: '最高档，用一次抵很多局。' },
+  // --- 私密向：名称只用首字母，简介保持原样 ---
+  { id: 'c01', name: 'QQ卡', price: 1, group: 'intimate', desc: '碰一下的轻吻，点到就好。' },
+  { id: 'c02', name: 'SW卡', price: 10, group: 'intimate', desc: '一个缠人一点的长吻。' },
+  { id: 'c03', name: 'KJ卡', price: 20, group: 'intimate', desc: '让对方为你服务一次。' },
+  { id: 'c04', name: 'ZA卡', price: 50, group: 'intimate', desc: '让对方主动，节奏由你定，直到你满意。' },
+  { id: 'c05', name: 'HH卡', price: 100, group: 'intimate', desc: '无条件原谅一次，之后不再提起。' },
 
   // --- 生活向：原名 ---
   { id: 'c06', name: '拥抱卡', price: 2, group: 'life', desc: '30 秒拥抱，期间不许说话。' },
