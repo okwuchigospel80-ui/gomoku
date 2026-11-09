@@ -19,7 +19,7 @@ export interface ShopOptions {
 }
 
 // Neutral bullets: the group names on screen must not hint at content.
-const thumb = (g: CardGroup) => (g === 'violet' ? '◆' : g === 'amber' ? '◆' : '◆')
+const thumb = (g: CardGroup) => (g === 'intimate' ? '♡' : g === 'life' ? '✦' : '⚑')
 
 export class ShopPanel {
   readonly el: HTMLDivElement
@@ -110,7 +110,7 @@ export class ShopPanel {
   }
 
   private renderCatalog(p: Profile) {
-    const groups: CardGroup[] = ['violet', 'amber', 'slate']
+    const groups: CardGroup[] = ['intimate', 'life', 'pact']
     const out: HTMLElement[] = []
     for (const g of groups) {
       out.push(text('div', 'catalog-group', GROUP_LABEL[g]))
