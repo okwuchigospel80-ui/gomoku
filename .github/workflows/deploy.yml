@@ -29,7 +29,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # Node 22+ can run the .ts test files directly (type stripping);
+          # Node 20 cannot, which is why this must stay >= 22.
+          node-version: '22'
           cache: npm
 
       - name: Install
