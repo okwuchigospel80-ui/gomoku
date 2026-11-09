@@ -1,9 +1,8 @@
-// Shop panel: shows the player's balance and their bag, plus the catalog.
+// Shop panel: balance, bag, catalog, and the score history.
 //
 // Cards are consumed with a single click — no state machine, by request. Using a
-// card records a local "已使用" note and drops one copy from the bag; the partner
-// sees the same inventory (it is part of the shared profile) but the "已使用"
-// line is local-only, since it is a courtesy note rather than game data.
+// card drops one copy from the bag; the partner sees the same inventory because
+// it is part of the shared profile.
 
 import { CARDS, GROUP_LABEL, type CardDef, type CardGroup } from './cards'
 import { canAfford, type Profile, type ProfileStore } from './profile'
@@ -18,6 +17,15 @@ export interface ShopOptions {
   onUse: (card: CardDef) => void
 }
 
+/** One line of the score history, built from the append-only ledger. */
+interface HistoryRow {
+  at: number
+  /** null for card events that do not move the balance on their own. */
+  delta: number | null
+  text: string
+  tone: 'earn' | 'spend' | 'card'
+}
+
 // Neutral bullets: the group names on screen must not hint at content.
 const thumb = (g: CardGroup) => (g === 'intimate' ? '♡' : g === 'life' ? '✦' : '⚑')
 
@@ -27,6 +35,7 @@ export class ShopPanel {
   private bagEl: HTMLDivElement
   private catalogEl: HTMLDivElement
   private partnerEl: HTMLDivElement
+  private historyEl: HTMLDivElement
   private opts: ShopOptions
 
   constructor(opts: ShopOptions) {
@@ -41,6 +50,9 @@ export class ShopPanel {
     this.bagEl = document.createElement('div')
     this.bagEl.className = 'shop-bag'
 
+    this.historyEl = document.createElement('div')
+    this.historyEl.className = 'shop-history'
+
     this.catalogEl = document.createElement('div')
     this.catalogEl.className = 'shop-catalog'
 
@@ -50,6 +62,7 @@ export class ShopPanel {
       this.balanceEl,
       this.partnerEl,
       section('我的卡包', this.bagEl),
+      section('积分记录', this.historyEl),
       section('商店', this.catalogEl),
     )
   }
@@ -76,7 +89,66 @@ export class ShopPanel {
     }
 
     this.renderBag(p)
+    this.renderHistory(p)
     this.renderCatalog(p)
+  }
+
+  /**
+   * Score history, newest first. Derived from the same ledger that produces the
+   * balance, so the numbers here always add up to `p.points`.
+   */
+  private renderHistory(p: Profile) {
+    const rows: HistoryRow[] = []
+    for (const e of p.entries) {
+      if (e.kind === 'points') {
+        const card = /兑换 (.+)/.exec(e.reason)
+        if (card) {
+          // The debit that accompanies a purchase is folded into the buy row.
+          continue
+        }
+        rows.push({
+          at: e.at,
+          delta: e.delta,
+          text: e.reason || (e.delta >= 0 ? '得分' : '扣分'),
+          tone: e.delta >= 0 ? 'earn' : 'spend',
+        })
+      } else if (e.kind === 'buy') {
+        const card = CARDS.find((c) => c.id === e.cardId)
+        rows.push({
+          at: e.at,
+          delta: card ? -card.price : null,
+          text: `兑换 ${card?.name ?? e.cardId}`,
+          tone: 'card',
+        })
+      } else {
+        const card = CARDS.find((c) => c.id === e.cardId)
+        rows.push({ at: e.at, delta: null, text: `使用 ${card?.name ?? e.cardId}`, tone: 'card' })
+      }
+    }
+
+    if (rows.length === 0) {
+      this.historyEl.replaceChildren(text('div', 'shop-empty', '还没有记录，赢一局或等对手悔棋就有分了'))
+      return
+    }
+
+    rows.sort((a, b) => b.at - a.at)
+    const shown = rows.slice(0, 30)
+    this.historyEl.replaceChildren(
+      ...shown.map((r) => {
+        const row = document.createElement('div')
+        row.className = `history-row ${r.tone}`
+        const sign = r.delta === null ? '' : r.delta > 0 ? `+${r.delta}` : String(r.delta)
+        row.append(
+          text('span', 'history-time', shortTime(r.at)),
+          text('span', 'history-text', r.text),
+          text('span', 'history-delta', sign),
+        )
+        return row
+      }),
+    )
+    if (rows.length > shown.length) {
+      this.historyEl.append(text('div', 'shop-empty', `仅显示最近 ${shown.length} 条`))
+    }
   }
 
   private renderBag(p: Profile) {
@@ -164,4 +236,19 @@ function text<K extends keyof HTMLElementTagNameMap>(
 
 function bagCount(p: Profile): number {
   return Object.values(p.bag).reduce((a, b) => a + b, 0)
+}
+
+/** "今天 14:32" / "11-07 09:15" — compact but unambiguous. */
+function shortTime(at: number): string {
+  if (!at) return ''
+  const d = new Date(at)
+  const now = new Date()
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate()
+  if (sameDay) return `今天 ${hm}`
+  const md = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return `${md} ${hm}`
 }

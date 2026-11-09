@@ -98,6 +98,19 @@ async function copyText(text: string): Promise<boolean> {
 const savedName = () => localStorage.getItem(NAME_KEY) ?? ''
 const storeName = (v: string) => localStorage.setItem(NAME_KEY, v)
 
+/**
+ * A `?name=` in the URL wins over the stored name. This makes it possible to
+ * share a link that signs the other person straight in under their nickname,
+ * and it lets two tabs on the same browser use different names (localStorage is
+ * shared across tabs, so without this they would collide).
+ */
+function nameFromUrl(): string | null {
+  const raw = new URLSearchParams(location.search).get('name')
+  if (!raw) return null
+  const v = raw.trim().slice(0, 16)
+  return v || null
+}
+
 const colorLabel = (c: Color) => (c === BLACK ? '黑棋' : '白棋')
 
 /* ------------------------------------------------------------------ */
@@ -171,7 +184,7 @@ function renderGate() {
 /* lobby                                                              */
 /* ------------------------------------------------------------------ */
 
-let pendingName = savedName()
+let pendingName = nameFromUrl() ?? savedName()
 
 function renderLobby() {
   const wrap = el('div', { class: 'lobby' })
@@ -501,8 +514,12 @@ function mountGame(code: string): GameView {
       toast('本局已结束')
       return
     }
+    if (room.isSuperseded()) {
+      toast('这个昵称已在另一台设备上继续对局')
+      return
+    }
     if (myColor() === null) {
-      toast('你是观战者，无法落子')
+      toast('等待对手加入')
       return
     }
     if (!isMyTurn()) {
@@ -551,14 +568,14 @@ function mountGame(code: string): GameView {
 
   /** Mirror the partner's profile so both balances are visible in the shop. */
   function syncPartner(state: GameState) {
-    const opponent = state.resigned === null ? null : null
-    void opponent
-    const seat =
-      room.state.seats.black?.clientId === room.clientId
-        ? room.state.seats.white
-        : room.state.seats.black
+    void state
+    const me = myName.trim().toLowerCase()
+    // The partner is whichever seat does not carry my name.
+    const seat = [room.state.seats.black, room.state.seats.white].find(
+      (s) => s && s.name.trim().toLowerCase() !== me,
+    )
     const name = seat?.name
-    if (!name || name === myName) return
+    if (!name) return
     if (partnerProfile?.name === name && partnerStore) return
 
     partnerProfile = null
@@ -612,16 +629,24 @@ function mountGame(code: string): GameView {
       return
     }
 
-    if (c === null) {
+    if (room.isSuperseded()) {
       turnText.replaceChildren(
-        el('strong', {}, `轮到${colorLabel(lastPosition.turn)}`),
-        el('span', { class: 'dim' }, ' · 观战中'),
+        el('strong', {}, '已在其他设备继续'),
+        el('span', { class: 'dim' }, ' · 这个窗口只读'),
       )
       return
     }
 
     if (status === 'offline') {
       turnText.replaceChildren(el('span', { class: 'dim' }, '连接中断，正在重连…'))
+      return
+    }
+
+    if (c === null) {
+      turnText.replaceChildren(
+        el('strong', {}, `轮到${colorLabel(lastPosition.turn)}`),
+        el('span', { class: 'dim' }, ' · 等待对手'),
+      )
       return
     }
 
@@ -640,8 +665,11 @@ function mountGame(code: string): GameView {
 
   function seatRow(color: Color): HTMLElement {
     const seat = color === BLACK ? room.state.seats.black : room.state.seats.white
-    const alive = peers.some((p) => p.clientId === seat?.clientId)
-    const isSelf = seat?.clientId === room.clientId
+    // Presence is matched by name so a player who switched devices still counts.
+    const alive = peers.some(
+      (p) => p.name.trim().toLowerCase() === (seat?.name ?? '').trim().toLowerCase(),
+    )
+    const isSelf = !!seat && seat.name.trim().toLowerCase() === myName.trim().toLowerCase()
     const isTurn = !isOver() && lastPosition.turn === color
 
     if (!seat || !alive) {
@@ -665,21 +693,8 @@ function mountGame(code: string): GameView {
   }
 
   function renderPlayers() {
-    const spectators = peers.filter((p) => p.color === null)
-    const rows = [seatRow(BLACK), seatRow(WHITE)]
-    for (const sp of spectators) {
-      if (sp.clientId === room.clientId && myColor() !== null) continue
-      rows.push(
-        el(
-          'div',
-          { class: `player-row${sp.clientId === room.clientId ? ' self' : ''}` },
-          el('div', { class: 'stone-dot', style: 'opacity:0' }),
-          el('div', { class: 'player-name' }, sp.name || '观战者'),
-          el('span', { class: 'tag' }, '观战'),
-        ),
-      )
-    }
-    playersEl.replaceChildren(...rows)
+    // Exactly two seats, no spectators: this is a two-player game.
+    playersEl.replaceChildren(seatRow(BLACK), seatRow(WHITE))
 
     const left = myUndosLeft()
     undoBtn.disabled = !canUndo()
@@ -835,8 +850,12 @@ function mountGame(code: string): GameView {
 }
 
 function shareUrl(code: string): string {
-  const base = location.href.split('#')[0]
-  return `${base}#/r/${code}`
+  // Keep any ?sharecode= (host-level gate) but drop our own ?name= so the guest
+  // is asked for their nickname instead of inheriting the sender's.
+  const url = new URL(location.href)
+  url.searchParams.delete('name')
+  url.hash = `#/r/${code}`
+  return url.toString()
 }
 
 /* ------------------------------------------------------------------ */

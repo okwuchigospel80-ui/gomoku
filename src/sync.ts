@@ -35,13 +35,10 @@ const HEARTBEAT_MS = 8000
 const RETAIN_WAIT_MS = 1800
 const PRESENCE_TTL_MS = 25000
 
-export type Seat = 'player' | 'spectator'
-
 export interface PlayerInfo {
   clientId: string
   name: string
   color: Color | null
-  seat: Seat
   /** epoch ms when we last heard from this client. */
   seen: number
 }
@@ -140,7 +137,6 @@ function sanitizeSeat(v: unknown): PlayerInfo | null {
     clientId: p.clientId,
     name: typeof p.name === 'string' ? p.name.slice(0, 24) : 'Player',
     color: p.color === 1 || p.color === 2 ? p.color : null,
-    seat: p.seat === 'spectator' ? 'spectator' : 'player',
     seen: 0,
   }
 }
@@ -385,16 +381,26 @@ export class Room {
   }
 
   /**
-   * Re-derives our own seat from the authoritative state. If our seat was
-   * overwritten while two clients joined at once, retry shortly — a free seat
-   * almost always appears on the next snapshot.
+   * Re-derives our own seat from the authoritative state.
+   *
+   * Seats are claimed by NAME, not by client id, so signing in with the same
+   * nickname on another device takes over the same seat and the game continues
+   * where it left off.
    */
   private syncMySeat() {
-    const holder = [this.state.seats.black, this.state.seats.white].find(
-      (s) => s?.clientId === this.clientId,
-    )
+    const holder = this.findMySeat()
     this.myColor = holder?.color ?? null
     if (!this.myColor && this.wantPlay) this.scheduleSeatAttempt()
+  }
+
+  /** The seat whose occupant carries my nickname (case-insensitive). */
+  private findMySeat(): PlayerInfo | null {
+    const me = this.name.trim().toLowerCase()
+    if (!me) return null
+    for (const s of [this.state.seats.black, this.state.seats.white]) {
+      if (s && s.name.trim().toLowerCase() === me) return s
+    }
+    return null
   }
 
   private scheduleSeatAttempt() {
@@ -408,24 +414,26 @@ export class Room {
     }, 500 + Math.random() * 600)
   }
 
-  /** Stop competing for a seat (the user chose to watch). */
-  spectate() {
-    this.wantPlay = false
-    if (this.seatTimer) {
-      clearTimeout(this.seatTimer)
-      this.seatTimer = null
-    }
-  }
-
   private claimSeatIfPossible() {
     if (!this.wantPlay) return
 
-    // Never steal a seat that is already ours.
-    const holder = [this.state.seats.black, this.state.seats.white].find(
-      (s) => s?.clientId === this.clientId,
-    )
+    // Never steal a seat that already carries my name.
+    const holder = this.findMySeat()
     if (holder) {
       this.myColor = holder.color
+      // Refresh clientId/seen so presence follows the new device.
+      const seats = { ...this.state.seats }
+      const refreshed: PlayerInfo = {
+        ...holder,
+        clientId: this.clientId,
+
+        seen: Date.now(),
+      }
+      if (holder.color === 1) seats.black = refreshed
+      else if (holder.color === 2) seats.white = refreshed
+      if (holder.clientId !== this.clientId) {
+        this.commit({ ...this.state, seats })
+      }
       return
     }
 
@@ -439,7 +447,6 @@ export class Room {
       clientId: this.clientId,
       name: this.name,
       color,
-      seat: 'player',
       seen: Date.now(),
     }
     const seats = { ...this.state.seats }
@@ -469,42 +476,58 @@ export class Room {
     }
   }
 
-  /** Is the client occupying this seat still showing signs of life? */
+  /** Is the person occupying this seat still showing signs of life? */
   private seatAlive(seat: PlayerInfo | null): boolean {
     if (!seat) return false
-    const p = this.presence.get(seat.clientId)
-    return !!p && Date.now() - p.ts <= PRESENCE_TTL_MS
+    // Presence is keyed by client id, but a player may have switched devices.
+    // Treat a seat as alive if ANY live client reports the same name.
+    const want = seat.name.trim().toLowerCase()
+    const now = Date.now()
+    for (const [id, p] of this.presence) {
+      if (now - p.ts > PRESENCE_TTL_MS) continue
+      if (id === seat.clientId) return true
+      if (p.name.trim().toLowerCase() === want) return true
+    }
+    return false
   }
 
+  /**
+   * True when this seat is mine by name but occupied by a DIFFERENT client id —
+   * i.e. I signed in on another device with the same nickname and that device
+   * has taken over. The stale client must stop playing instead of fighting.
+   */
+  isSuperseded(): boolean {
+    const seat = this.findMySeat()
+    if (!seat) return false
+    return seat.clientId !== this.clientId
+  }
+
+  /** Only the two seated players — there are no spectators in this game. */
   activePeers(): PlayerInfo[] {
     const now = Date.now()
     const out: PlayerInfo[] = []
-    const seatOf = (id: string): Color | null => {
-      if (this.state.seats.black?.clientId === id) return 1
-      if (this.state.seats.white?.clientId === id) return 2
+    const live = (name: string) => {
+      const want = name.trim().toLowerCase()
+      for (const [, p] of this.presence) {
+        if (now - p.ts <= PRESENCE_TTL_MS && p.name.trim().toLowerCase() === want) return p.ts
+      }
       return null
     }
-
-    for (const [id, p] of this.presence) {
-      if (now - p.ts > PRESENCE_TTL_MS) continue
-      const color = seatOf(id)
+    for (const [seat, color] of [
+      [this.state.seats.black, 1 as Color],
+      [this.state.seats.white, 2 as Color],
+    ] as const) {
+      if (!seat) continue
+      const seen = live(seat.name)
+      // Always include myself even if my presence has not round-tripped yet.
+      const isMe = seat.name.trim().toLowerCase() === this.name.trim().toLowerCase()
+      if (seen === null && !isMe) continue
       out.push({
-        clientId: id,
-        name: id === this.clientId ? this.name : p.name,
+        clientId: seat.clientId,
+        name: seat.name,
         color,
-        seat: color === null ? 'spectator' : 'player',
-        seen: p.ts,
-      })
-    }
 
-    // Ourselves, always — even if our presence has not round-tripped yet.
-    if (!out.some((p) => p.clientId === this.clientId)) {
-      out.unshift({
-        clientId: this.clientId,
-        name: this.name,
-        color: seatOf(this.clientId),
-        seat: seatOf(this.clientId) === null ? 'spectator' : 'player',
-        seen: now,
+        seen: seen ?? now,
       })
     }
     return out

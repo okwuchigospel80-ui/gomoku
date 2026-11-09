@@ -624,6 +624,74 @@ button:disabled {
   padding-right: 2px;
 }
 
+/* ---------- score history ---------- */
+
+.shop-history {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.history-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  background: #1a1d20;
+  border-radius: 7px;
+  font-size: 0.76rem;
+  border-left: 2px solid transparent;
+}
+
+.history-row.earn {
+  border-left-color: var(--ok);
+}
+
+.history-row.spend {
+  border-left-color: var(--bad);
+}
+
+.history-row.card {
+  border-left-color: var(--accent);
+  opacity: 0.85;
+}
+
+.history-time {
+  flex: none;
+  width: 74px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.7rem;
+}
+
+.history-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.history-delta {
+  flex: none;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.history-row.earn .history-delta {
+  color: var(--ok);
+}
+
+.history-row.spend .history-delta {
+  color: var(--bad);
+}
+
+
 .catalog-group {
   font-size: 0.68rem;
   font-weight: 650;
