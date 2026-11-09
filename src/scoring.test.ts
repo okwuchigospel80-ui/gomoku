@@ -23,12 +23,12 @@ test('catalog ids are unique and every id resolves', () => {
 })
 
 test('catalog has the prices the user specified', () => {
-  const price = (name: string) => CARDS.find((c) => c.name === name)?.price
-  assert.equal(price('亲亲卡'), 1)
-  assert.equal(price('舌吻卡'), 10)
-  assert.equal(price('口交卡'), 20)
-  assert.equal(price('做爱卡'), 50)
-  assert.equal(price('和好卡'), 100)
+  const price = (id: string) => CARD_BY_ID.get(id)?.price
+  assert.equal(price('c01'), 1)
+  assert.equal(price('c02'), 10)
+  assert.equal(price('c03'), 20)
+  assert.equal(price('c04'), 50)
+  assert.equal(price('c05'), 100)
 })
 
 test('undo penalties sum to 18 and wins are worth 15', () => {
@@ -132,7 +132,17 @@ test('affordability compares against the exact price', () => {
 })
 
 test('the full intended price ladder is monotonic-ish by group', () => {
-  const intimate = CARDS.filter((c) => c.group === 'intimate').map((c) => c.price)
-  // Ascending within the intimate group, so the shop reads as a ladder.
-  assert.deepEqual(intimate, [...intimate].sort((a, b) => a - b))
+  const first = CARDS.filter((c) => c.group === 'violet').map((c) => c.price)
+  // Ascending within the first group, so the shop reads as a ladder.
+  assert.deepEqual(first, [...first].sort((a, b) => a - b))
+})
+
+test('catalog leaks no real card names', () => {
+  // This file is public in the deployed bundle. Guard against someone pasting
+  // the real wording back in by accident.
+  const forbidden = ['亲亲', '舌吻', '口交', '做爱', '和好', '拥抱', '赞美', '点歌', '家务', '早餐', '约会', '按摩', '情书']
+  const blob = JSON.stringify(CARDS)
+  for (const word of forbidden) {
+    assert.equal(blob.includes(word), false, `catalog still contains "${word}"`)
+  }
 })

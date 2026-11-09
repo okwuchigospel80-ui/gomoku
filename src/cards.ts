@@ -1,52 +1,57 @@
 // Shop catalog.
 //
-// Wire format note: the MQTT payload carries only the opaque `id` (c01, c02…),
-// never the Chinese name or description. Names live here in the bundle and are
-// applied at render time. Nothing here is a security boundary — the bundle is
-// public — but at least the broker traffic does not broadcast what was bought.
+// Privacy note: this file is public (the site is a static bundle on a public
+// repo), so the cards carry NEUTRAL code names only. The real meaning of each
+// card lives in `card-legend.md`, which is NOT committed. Keep that property if
+// you edit this file: never put the real name or a revealing description here.
+//
+// The wire payload uses only the opaque `id`, so MQTT traffic reveals nothing
+// beyond "someone bought c03".
 
-export type CardGroup = 'intimate' | 'life' | 'pact'
+export type CardGroup = 'violet' | 'amber' | 'slate'
 
 export interface CardDef {
   /** Stable, opaque wire id. Never renumber: existing inventories reference it. */
   id: string
+  /** Neutral display name. Map it to its real meaning in card-legend.md. */
   name: string
   price: number
+  /** Deliberately bland. Must not hint at the real effect. */
   desc: string
   group: CardGroup
 }
 
 export const CARDS: readonly CardDef[] = [
-  // --- 亲密向 ---
-  { id: 'c01', name: '亲亲卡', price: 1, group: 'intimate', desc: '碰一下的轻吻，点到就好。' },
-  { id: 'c02', name: '舌吻卡', price: 10, group: 'intimate', desc: '一个缠人一点的长吻。' },
-  { id: 'c03', name: '口交卡', price: 20, group: 'intimate', desc: '让对方为你服务一次。' },
-  { id: 'c04', name: '做爱卡', price: 50, group: 'intimate', desc: '让对方主动，节奏由你定，直到你满意。' },
-  { id: 'c05', name: '和好卡', price: 100, group: 'intimate', desc: '无条件原谅一次，之后不再提起。' },
+  // --- 第一组 ---
+  { id: 'c01', name: '卡 A', price: 1, group: 'violet', desc: '轻量级小互动，随取随用。' },
+  { id: 'c02', name: '卡 B', price: 10, group: 'violet', desc: '中等强度的互动，适合有心情的时候。' },
+  { id: 'c03', name: '卡 C', price: 20, group: 'violet', desc: '较重的互动，需要对方配合。' },
+  { id: 'c04', name: '卡 D', price: 50, group: 'violet', desc: '大额稀有卡，留到特别的日子。' },
+  { id: 'c05', name: '卡 E', price: 100, group: 'violet', desc: '最高档的卡，用一次抵很多局。' },
 
-  // --- 生活向 ---
-  { id: 'c06', name: '拥抱卡', price: 2, group: 'life', desc: '30 秒拥抱，期间不许说话。' },
-  { id: 'c07', name: '赞美卡', price: 3, group: 'life', desc: '认真夸你三句，不许敷衍。' },
-  { id: 'c08', name: '点歌卡', price: 5, group: 'life', desc: '对方唱一首你点的歌。' },
-  { id: 'c09', name: '观战指点卡', price: 10, group: 'life', desc: '让对方替你走一步，落点由对方决定。' },
-  { id: 'c10', name: '家务豁免卡', price: 15, group: 'life', desc: '免做一次指定家务。' },
-  { id: 'c11', name: '早餐卡', price: 20, group: 'life', desc: '对方把早餐送到床边。' },
-  { id: 'c12', name: '约会卡', price: 25, group: 'life', desc: '对方安排一次约会，你只负责出席。' },
-  { id: 'c13', name: '按摩卡', price: 30, group: 'life', desc: '15 分钟肩颈按摩。' },
-  { id: 'c14', name: '情书卡', price: 40, group: 'life', desc: '手写一段话，拍照发你。' },
+  // --- 第二组 ---
+  { id: 'c06', name: '卡 F', price: 2, group: 'amber', desc: '日常小确幸，随手兑换不心疼。' },
+  { id: 'c07', name: '卡 G', price: 3, group: 'amber', desc: '日常向，一分钟内能兑现。' },
+  { id: 'c08', name: '卡 H', price: 5, group: 'amber', desc: '需要对方花点心思的小事。' },
+  { id: 'c09', name: '卡 I', price: 10, group: 'amber', desc: '会影响对局走向的一次干预。' },
+  { id: 'c10', name: '卡 J', price: 15, group: 'amber', desc: '一次性的豁免额度。' },
+  { id: 'c11', name: '卡 K', price: 20, group: 'amber', desc: '需要早起配合的项目。' },
+  { id: 'c12', name: '卡 L', price: 25, group: 'amber', desc: '需要提前安排时间的事。' },
+  { id: 'c13', name: '卡 M', price: 30, group: 'amber', desc: '要花半小时的事情。' },
+  { id: 'c14', name: '卡 N', price: 40, group: 'amber', desc: '一次性的大件心意。' },
 
-  // --- 约定向：兑换后靠两人口头兑现，程序只记录「用了」 ---
-  { id: 'c15', name: '免罚卡', price: 8, group: 'pact', desc: '本局你悔棋一次，不送对方分（口头约定）。' },
-  { id: 'c16', name: '悔棋保护卡', price: 12, group: 'pact', desc: '额外获得一次悔棋机会（口头约定）。' },
-  { id: 'c17', name: '双倍卡', price: 20, group: 'pact', desc: '下一局赢了按 30 分结算（口头约定）。' },
+  // --- 第三组 ---
+  { id: 'c15', name: '卡 O', price: 8, group: 'slate', desc: '对局中的一次性豁免。' },
+  { id: 'c16', name: '卡 P', price: 12, group: 'slate', desc: '对局中的一次额外机会。' },
+  { id: 'c17', name: '卡 Q', price: 20, group: 'slate', desc: '影响下一局结算的加成。' },
 ]
 
 export const CARD_BY_ID = new Map(CARDS.map((c) => [c.id, c]))
 
 export const GROUP_LABEL: Record<CardGroup, string> = {
-  intimate: '亲密',
-  life: '生活',
-  pact: '约定',
+  violet: '第一组',
+  amber: '第二组',
+  slate: '第三组',
 }
 
 /** Scoring constants, exported so the UI and the rules cannot drift apart. */

@@ -5,3 +5,6 @@ dist/
 
 # build artefacts we hand out manually
 gomoku-static.zip
+
+# Private: card code -> real meaning. Never commit.
+card-legend.md
