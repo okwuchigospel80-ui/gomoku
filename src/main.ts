@@ -19,6 +19,7 @@ import {
 import { BoardView } from './renderer'
 import { UNDO_PENALTY, WIN_POINTS } from './cards'
 import { ProfileStore, type Profile } from './profile'
+import { PairStore, sameName, type Pair } from './pairing'
 import { ShopPanel } from './shop'
 import { Room, UNDOS_PER_PLAYER, type ConnStatus, type GameState, type PlayerInfo } from './sync'
 
@@ -284,12 +285,14 @@ interface GameView {
 }
 
 function mountGame(code: string): GameView {
-  const myName = pendingName || 'Player'
-  const room = new Room(code, myName, {
+  const room = new Room(code, pendingName || 'Player', {
     onStatus: (s, detail) => onStatus(s, detail),
     onState: (s) => onState(s),
     onPeers: (p) => onPeers(p),
   })
+
+  /** Current identity; may change when a bound partner is adopted. */
+  const myName = (): string => room.name
 
   let lastPosition: Replay = replay([], room.state.size)
   let view: BoardView | null = null
@@ -300,6 +303,9 @@ function mountGame(code: string): GameView {
   let shopOpen = false
   let partnerStore: ProfileStore | null = null
   let partnerProfile: Profile | null = null
+  /** The binding for THIS room's creator, once known. */
+  let pair: Pair | null = null
+  let pairStore: PairStore | null = null
 
   /* ---- DOM ---- */
   const canvas = el('canvas') as HTMLCanvasElement
@@ -316,11 +322,15 @@ function mountGame(code: string): GameView {
   const statusText = el('span', {}, '连接中')
   const statusEl = el('span', { class: 'status' }, statusDot, statusText)
 
+  const pairBadge = el('div', { class: 'pair-badge' })
+  pairBadge.hidden = true
+
   const roomPanel = el(
     'div',
     { class: 'panel' },
     el('div', { class: 'panel-head' }, el('span', {}, '房间'), statusEl),
     roomCodeEl,
+    pairBadge,
     el(
       'div',
       { class: 'share' },
@@ -387,16 +397,34 @@ function mountGame(code: string): GameView {
   settingsPanel.hidden = true
 
   /* ---- profile + shop ---- */
-  const profileStore = new ProfileStore(
-    myName,
-    () => {
-      shop.render()
-      renderTurn()
-    },
-    () => {
-      /* profile connection status is not surfaced; the room's status covers it */
-    },
-  )
+
+  /**
+   * The profile follows the CURRENT identity, which may change when a bound
+   * partner is adopted. Rebuilt whenever the name changes so points and cards
+   * always come from the right account.
+   */
+  let profileStore: ProfileStore = makeProfileStore(myName())
+
+  function makeProfileStore(name: string): ProfileStore {
+    return new ProfileStore(
+      name,
+      () => {
+        shop.render()
+        renderTurn()
+      },
+      () => {
+        /* profile connection status is not surfaced; the room's status covers it */
+      },
+    )
+  }
+
+  function rebindProfileIfNeeded() {
+    if (profileStore.name === myName()) return
+    profileStore.dispose()
+    profileStore = makeProfileStore(myName())
+    profileStore.connect()
+    shop.render()
+  }
 
   const shop = new ShopPanel({
     getProfile: () => profileStore.profile,
@@ -547,6 +575,7 @@ function mountGame(code: string): GameView {
     view?.setPosition(lastPosition.board, winCells(), lastMoveIndex())
     view?.invalidate()
     if (document.activeElement !== sizeSelect) sizeSelect.value = String(state.size)
+    ensurePairing(state)
     claimMyRewards(state)
     syncPartner(state)
     renderTurn()
@@ -557,31 +586,92 @@ function mountGame(code: string): GameView {
   }
 
   /**
+   * Watch (and, on first meeting, create) the binding that ties this room to a
+   * pair of players. The owner of the pairing is the room's creator.
+   */
+  function ensurePairing(state: GameState) {
+    const creator = state.creator
+    if (!creator) return
+
+    if (!pairStore || !sameName(pairStore.owner, creator)) {
+      pairStore?.dispose()
+      pairStore = new PairStore(creator, {
+        onPair: (p) => {
+          pair = p
+          // Bound partner exists and I am not the creator: play as them, on
+          // whatever device and whatever nickname I typed.
+          if (p?.partner && !sameName(creator, room.name)) {
+            if (room.adoptPartnerIdentity(p.partner)) {
+              toast(`已按绑定身份进入：${p.partner}`)
+              rebindProfileIfNeeded()
+            }
+          }
+          syncPartner(state)
+          shop.render()
+        },
+        onStatus: () => {},
+      })
+      pairStore.connect()
+      return
+    }
+
+    // Bound already, or a guest has shown up: create the binding if missing.
+    if (!pairStore.pair) {
+      const creatorIsMe = sameName(creator, myName())
+      const guestSeat = [state.seats.black, state.seats.white].find(
+        (s) => s && !sameName(s.name, creator),
+      )
+      if (!creatorIsMe && guestSeat) {
+        // The guest is here; the owner's side may be absent, so the guest
+        // records the pairing on the owner's behalf (first-write-wins).
+        pairStore.bind(myName())
+      } else if (creatorIsMe && guestSeat) {
+        pairStore.bind(guestSeat.name)
+      }
+    }
+  }
+
+  /**
    * Pull every ledger entry addressed to me into my own profile. The store
    * dedupes by entry id, so replaying the same room state is harmless.
    */
   function claimMyRewards(state: GameState) {
     for (const r of state.rewards) {
-      if (r.to === myName) profileStore.claim(r.id, r.delta, r.reason)
+      if (r.to === myName()) profileStore.claim(r.id, r.delta, r.reason)
     }
   }
 
-  /** Mirror the partner's profile so both balances are visible in the shop. */
+  /**
+   * Mirror the partner's profile so both balances and card bags are visible.
+   *
+   * The partner is resolved from the PAIRING, not from who happens to be seated:
+   * an unpaired room's guest takes the partner role once and it sticks, so a
+   * later visitor on a different device still plays as the same person.
+   */
   function syncPartner(state: GameState) {
-    void state
-    const me = myName.trim().toLowerCase()
-    // The partner is whichever seat does not carry my name.
-    const seat = [room.state.seats.black, room.state.seats.white].find(
-      (s) => s && s.name.trim().toLowerCase() !== me,
-    )
-    const name = seat?.name
-    if (!name) return
-    if (partnerProfile?.name === name && partnerStore) return
+    const creator = state.creator
+    if (!creator) return
+    const me = myName().trim().toLowerCase()
+    const creatorIsMe = creator.trim().toLowerCase() === me
+
+    // Which name is "the other side" of this room?
+    let partnerName: string | null = null
+    if (pair && pair.partner) {
+      partnerName = creatorIsMe ? pair.partner : creator
+    } else {
+      // Not bound yet: the guest in this room becomes the partner.
+      const otherSeat = [state.seats.black, state.seats.white].find(
+        (s) => s && s.name.trim().toLowerCase() !== creator.trim().toLowerCase(),
+      )
+      partnerName = creatorIsMe ? (otherSeat?.name ?? null) : creator
+    }
+    if (!partnerName) return
+    if (partnerProfile?.name === partnerName && partnerStore) return
 
     partnerProfile = null
     partnerStore?.dispose()
     partnerStore = new ProfileStore(
-      name,
+      partnerName,
       (p) => {
         partnerProfile = p
         shop.render()
@@ -669,7 +759,7 @@ function mountGame(code: string): GameView {
     const alive = peers.some(
       (p) => p.name.trim().toLowerCase() === (seat?.name ?? '').trim().toLowerCase(),
     )
-    const isSelf = !!seat && seat.name.trim().toLowerCase() === myName.trim().toLowerCase()
+    const isSelf = !!seat && seat.name.trim().toLowerCase() === myName().trim().toLowerCase()
     const isTurn = !isOver() && lastPosition.turn === color
 
     if (!seat || !alive) {
@@ -701,6 +791,18 @@ function mountGame(code: string): GameView {
     undoBtn.textContent = myColor() === null ? '悔棋' : `悔棋 (${left})`
     resignBtn.disabled = myColor() === null || isOver()
     resetBtn.disabled = lastPosition.placed === 0 && !isOver()
+
+    // Show the binding so both players know who belongs to this room.
+    const creator = room.state.creator
+    if (pair && creator) {
+      const iAmOwner = sameName(creator, myName())
+      const a = iAmOwner ? myName() : creator
+      const b = iAmOwner ? pair.partner : myName()
+      pairBadge.textContent = `已绑定：${a} ↔ ${b}`
+      pairBadge.hidden = false
+    } else {
+      pairBadge.hidden = true
+    }
   }
 
   function renderLog() {
@@ -836,12 +938,14 @@ function mountGame(code: string): GameView {
 
   room.connect()
   profileStore.connect()
+  pair = null
 
   return {
     destroy() {
       window.removeEventListener('beforeunload', onUnload)
       view?.dispose()
       partnerStore?.dispose()
+      pairStore?.dispose()
       profileStore.dispose()
       room.dispose()
       overlay?.remove()

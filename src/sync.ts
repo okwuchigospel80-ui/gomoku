@@ -26,6 +26,7 @@ import {
 } from './board'
 import { UNDO_PENALTY, WIN_POINTS } from './cards'
 import type { RoomReward } from './profile'
+import { sameName } from './pairing'
 
 export const BROKERS = ['wss://broker.emqx.io:8084/mqtt', 'wss://test.mosquitto.org:8081/mqtt']
 
@@ -198,7 +199,7 @@ export class Room {
   ready = false
 
   private client: MqttClient | null = null
-  private name: string
+  private _name: string
   private events: RoomEvents
   private heartbeat: ReturnType<typeof setInterval> | null = null
   private peersTick: ReturnType<typeof setInterval> | null = null
@@ -215,12 +216,17 @@ export class Room {
 
   constructor(room: string, name: string, events: RoomEvents) {
     this.room = room
-    this.name = name.slice(0, 24) || 'Player'
+    this._name = name.slice(0, 24) || 'Player'
     this.events = events
   }
 
+  /** Current identity. Read-only: use `setName` or `adoptPartnerIdentity`. */
+  get name(): string {
+    return this._name
+  }
+
   setName(name: string) {
-    this.name = name.slice(0, 24) || 'Player'
+    this._name = name.slice(0, 24) || 'Player'
     this.publishPresence()
   }
 
@@ -358,11 +364,11 @@ export class Room {
 
   /** Presence is the ONLY thing a heartbeat publishes. Game state is untouched. */
   private publishPresence() {
-    this.presence.set(this.clientId, { name: this.name, ts: Date.now() })
+    this.presence.set(this.clientId, { name: this._name, ts: Date.now() })
     if (!this.client?.connected) return
     this.client.publish(
       presenceTopic(this.room, this.clientId),
-      JSON.stringify({ clientId: this.clientId, name: this.name, ts: Date.now() }),
+      JSON.stringify({ clientId: this.clientId, name: this._name, ts: Date.now() }),
       { qos: 0, retain: true },
     )
   }
@@ -395,7 +401,7 @@ export class Room {
 
   /** The seat whose occupant carries my nickname (case-insensitive). */
   private findMySeat(): PlayerInfo | null {
-    const me = this.name.trim().toLowerCase()
+    const me = this._name.trim().toLowerCase()
     if (!me) return null
     for (const s of [this.state.seats.black, this.state.seats.white]) {
       if (s && s.name.trim().toLowerCase() === me) return s
@@ -426,7 +432,6 @@ export class Room {
       const refreshed: PlayerInfo = {
         ...holder,
         clientId: this.clientId,
-
         seen: Date.now(),
       }
       if (holder.color === 1) seats.black = refreshed
@@ -437,15 +442,16 @@ export class Room {
       return
     }
 
-    const color = this.seekSeat()
-    if (color === null) {
-      this.myColor = null
-      return
-    }
+    // Seats follow the PAIRING, not arrival order: the room's creator always
+    // takes black, their bound partner always takes white, no matter which
+    // device either of them signs in from.
+    const creator = this.state.creator
+    const color: Color = creator ? (this.isCreator ? 1 : 2) : 1
+    if (this.state.seats[color === 1 ? 'black' : 'white']) return
 
     const info: PlayerInfo = {
       clientId: this.clientId,
-      name: this.name,
+      name: this._name,
       color,
       seen: Date.now(),
     }
@@ -453,7 +459,34 @@ export class Room {
     if (color === 1) seats.black = info
     else seats.white = info
     this.myColor = color
-    this.commit({ ...this.state, seats, creator: this.state.creator ?? this.clientId })
+    // `creator` stores the NICKNAME, not the client id: the pairing is bound to
+    // a person, so it has to survive a change of device.
+    this.commit({ ...this.state, seats, creator: this.state.creator ?? this.name })
+  }
+
+  /** True when this client's nickname is the room's creator. */
+  get isCreator(): boolean {
+    const c = this.state.creator
+    if (!c) return false
+    return sameName(c, this._name)
+  }
+
+  /**
+   * Adopt the bound partner's identity.
+   *
+   * Once a room is paired, anyone who is not the creator plays as the partner —
+   * on any device, under any nickname they happen to type. Renaming the local
+   * player is what makes the score, the cards and the seat all follow the
+   * pairing rather than the typed name.
+   */
+  adoptPartnerIdentity(partnerName: string): boolean {
+    if (sameName(this._name, partnerName)) return false
+    if (this.isCreator) return false
+    this._name = partnerName
+    // Re-derive the seat against the new name.
+    this.myColor = null
+    this.claimSeatIfPossible()
+    return true
   }
 
   /** Publish a new authoritative snapshot, bumping the revision. */
@@ -520,7 +553,7 @@ export class Room {
       if (!seat) continue
       const seen = live(seat.name)
       // Always include myself even if my presence has not round-tripped yet.
-      const isMe = seat.name.trim().toLowerCase() === this.name.trim().toLowerCase()
+      const isMe = seat.name.trim().toLowerCase() === this._name.trim().toLowerCase()
       if (seen === null && !isMe) continue
       out.push({
         clientId: seat.clientId,

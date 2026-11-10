@@ -979,3 +979,20 @@ button:disabled {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------- pairing badge ---------- */
+
+.pair-badge {
+  font-size: 0.74rem;
+  color: var(--ok);
+  background: rgba(95, 191, 127, 0.1);
+  border: 1px solid rgba(95, 191, 127, 0.26);
+  border-radius: 8px;
+  padding: 6px 10px;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.pair-badge[hidden] {
+  display: none;
+}
