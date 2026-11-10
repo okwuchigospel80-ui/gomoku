@@ -22,8 +22,8 @@ import { ProfileStore, type Profile } from './profile'
 import { PairStore, sameName, type Pair } from './pairing'
 import { ShopPanel } from './shop'
 import { Room, UNDOS_PER_PLAYER, type ConnStatus, type GameState, type PlayerInfo } from './sync'
-
-const NAME_KEY = 'gomoku.name'
+import { copyText, el, nameFromUrl, savedName, shareUrl, storeName, toast } from './dom'
+import { mountDrawGuess, type DgView } from './dgmain'
 
 const app = document.getElementById('app')!
 
@@ -31,86 +31,34 @@ const app = document.getElementById('app')!
 /* routing                                                             */
 /* ------------------------------------------------------------------ */
 
-function route(): { kind: 'lobby' } | { kind: 'room'; code: string } {
+type Route =
+  | { kind: 'lobby' }
+  | { kind: 'gomoku'; code: string }
+  | { kind: 'drawguess'; code: string }
+
+function route(): Route {
   const hash = location.hash.replace(/^#/, '')
-  const m = /^\/r\/([A-Za-z0-9-]+)/.exec(hash)
-  if (m) {
-    const code = normalizeRoom(m[1])
-    if (code.length >= 4) return { kind: 'room', code }
+  // `#/d/<code>` is 你画我猜, `#/g/<code>` and the legacy `#/r/<code>` are gomoku.
+  const dg = /^\/d\/([A-Za-z0-9-]+)/.exec(hash)
+  if (dg) {
+    const code = normalizeRoom(dg[1])
+    if (code.length >= 4) return { kind: 'drawguess', code }
+  }
+  const gm = /^\/[gr]\/([A-Za-z0-9-]+)/.exec(hash)
+  if (gm) {
+    const code = normalizeRoom(gm[1])
+    if (code.length >= 4) return { kind: 'gomoku', code }
   }
   return { kind: 'lobby' }
 }
 
-function gotoRoom(code: string) {
-  location.hash = `#/r/${code}`
+function gotoRoom(code: string, game: 'g' | 'd') {
+  location.hash = `#/${game}/${code}`
 }
 
 /* ------------------------------------------------------------------ */
 /* small helpers                                                       */
 /* ------------------------------------------------------------------ */
-
-function el<K extends keyof HTMLElementTagNameMap>(
-  tag: K,
-  attrs: Record<string, string> = {},
-  ...children: (Node | string | null | false)[]
-): HTMLElementTagNameMap[K] {
-  const node = document.createElement(tag)
-  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v)
-  for (const c of children) if (c !== null && c !== false) node.append(c)
-  return node
-}
-
-function toast(message: string) {
-  let host = document.querySelector<HTMLDivElement>('.toast-host')
-  if (!host) {
-    host = el('div', { class: 'toast-host' })
-    document.body.append(host)
-  }
-  const node = el('div', { class: 'toast' }, message)
-  host.append(node)
-  setTimeout(() => {
-    node.classList.add('leaving')
-    setTimeout(() => node.remove(), 220)
-  }, 2000)
-}
-
-async function copyText(text: string): Promise<boolean> {
-  try {
-    await navigator.clipboard.writeText(text)
-    return true
-  } catch {
-    // Clipboard API needs a secure context; fall back to a temp textarea.
-    try {
-      const ta = el('textarea')
-      ta.value = text
-      ta.style.position = 'fixed'
-      ta.style.opacity = '0'
-      document.body.append(ta)
-      ta.select()
-      const ok = document.execCommand('copy')
-      ta.remove()
-      return ok
-    } catch {
-      return false
-    }
-  }
-}
-
-const savedName = () => localStorage.getItem(NAME_KEY) ?? ''
-const storeName = (v: string) => localStorage.setItem(NAME_KEY, v)
-
-/**
- * A `?name=` in the URL wins over the stored name. This makes it possible to
- * share a link that signs the other person straight in under their nickname,
- * and it lets two tabs on the same browser use different names (localStorage is
- * shared across tabs, so without this they would collide).
- */
-function nameFromUrl(): string | null {
-  const raw = new URLSearchParams(location.search).get('name')
-  if (!raw) return null
-  const v = raw.trim().slice(0, 16)
-  return v || null
-}
 
 const colorLabel = (c: Color) => (c === BLACK ? '黑棋' : '白棋')
 
@@ -187,19 +135,40 @@ function renderGate() {
 
 let pendingName = nameFromUrl() ?? savedName()
 
+/** One entry in the lobby's game picker. */
+interface GameEntry {
+  key: 'g' | 'd'
+  title: string
+  tagline: string
+  detail: string
+  accent: string
+}
+
+const GAMES: GameEntry[] = [
+  {
+    key: 'g',
+    title: '五子棋',
+    tagline: '轮流落子，先连五者胜',
+    detail: '每人 3 次悔棋 · 赢一局 15 分',
+    accent: '●○',
+  },
+  {
+    key: 'd',
+    title: '你画我猜',
+    tagline: '一人画，一人猜，90 秒一回合',
+    detail: '猜对 12 分 · 画手 8 分 · 速猜再 +5',
+    accent: '✎',
+  },
+]
+
 function renderLobby() {
-  const wrap = el('div', { class: 'lobby' })
+  const wrap = el('div', { class: 'lobby lobby-home' })
 
   const brand = el(
     'div',
     { class: 'brand' },
     el('div', { class: 'brand-mark' }, el('i')),
-    el(
-      'div',
-      {},
-      el('h1', {}, '五子棋'),
-      el('p', {}, '创建房间，把链接发给朋友，即可远程对战'),
-    ),
+    el('div', {}, el('h1', {}, '我们的小游戏'), el('p', {}, '选一个游戏，创建房间，把链接发给对方')),
   )
 
   const nameInput = el('input', {
@@ -211,8 +180,48 @@ function renderLobby() {
   }) as HTMLInputElement
   nameInput.value = pendingName
 
-  const createBtn = el('button', { class: 'btn btn-primary', type: 'button' }, '创建新房间') as HTMLButtonElement
+  const commitName = () => {
+    const v = nameInput.value.trim().slice(0, 16)
+    pendingName = v
+    storeName(v)
+    return v
+  }
 
+  const nameField = el(
+    'div',
+    { class: 'card name-card' },
+    el('div', { class: 'field' }, el('label', { for: 'name' }, '昵称（两个游戏共用同一个账户）'), nameInput),
+  )
+
+  // One card per game, side by side on wide screens.
+  const picks = el('div', { class: 'game-picks' })
+  for (const game of GAMES) {
+    const create = el(
+      'button',
+      { class: 'btn btn-primary', type: 'button' },
+      `创建${game.title}房间`,
+    ) as HTMLButtonElement
+    create.addEventListener('click', () => {
+      commitName()
+      gotoRoom(randomRoomCode(), game.key)
+    })
+    picks.append(
+      el(
+        'div',
+        { class: 'game-card' },
+        el(
+          'div',
+          { class: 'game-card-head' },
+          el('span', { class: 'game-card-mark' }, game.accent),
+          el('div', {}, el('h2', {}, game.title), el('p', {}, game.tagline)),
+        ),
+        el('p', { class: 'game-card-detail' }, game.detail),
+        create,
+      ),
+    )
+  }
+
+  // Joining by code: the code alone decides which game opens.
   const codeInput = el('input', {
     id: 'code',
     class: 'code',
@@ -223,31 +232,26 @@ function renderLobby() {
     spellcheck: 'false',
   }) as HTMLInputElement
 
-  const joinBtn = el('button', { class: 'btn btn-ghost', type: 'button' }, '加入房间') as HTMLButtonElement
+  const joinGomoku = el('button', { class: 'btn btn-ghost', type: 'button' }, '进五子棋') as HTMLButtonElement
+  const joinDraw = el('button', { class: 'btn btn-ghost', type: 'button' }, '进你画我猜') as HTMLButtonElement
+  const joinHint = el('p', { class: 'hint' }, '房间码本身分不出是哪个游戏，所以下面选了游戏再进。')
 
-  const form = el(
-    'div',
-    { class: 'card' },
-    el('div', { class: 'field' }, el('label', { for: 'name' }, '昵称'), nameInput),
-    createBtn,
-    el('div', { class: 'divider' }, '或者加入已有房间'),
-    el('div', { class: 'field' }, el('label', { for: 'code' }, '房间码'), codeInput),
-    joinBtn,
-  )
-
-  const commitName = () => {
-    const v = nameInput.value.trim().slice(0, 16)
-    pendingName = v
-    storeName(v)
-    return v
-  }
-
-  createBtn.addEventListener('click', () => {
-    commitName()
-    gotoRoom(randomRoomCode())
+  codeInput.addEventListener('input', () => {
+    const pos = codeInput.selectionStart ?? 0
+    codeInput.value = normalizeRoom(codeInput.value)
+    codeInput.setSelectionRange(pos, pos)
   })
 
-  const join = () => {
+  const joinCard = el(
+    'div',
+    { class: 'card' },
+    el('div', { class: 'divider' }, '加入已有房间'),
+    el('div', { class: 'field' }, el('label', { for: 'code' }, '房间码'), codeInput),
+    el('div', { class: 'join-row' }, joinGomoku, joinDraw),
+    joinHint,
+  )
+
+  const join = (game: 'g' | 'd') => {
     commitName()
     const code = normalizeRoom(codeInput.value)
     if (code.length < 4) {
@@ -255,23 +259,25 @@ function renderLobby() {
       codeInput.focus()
       return
     }
-    gotoRoom(code)
+    gotoRoom(code, game)
   }
 
-  joinBtn.addEventListener('click', join)
+  joinGomoku.addEventListener('click', () => join('g'))
+  joinDraw.addEventListener('click', () => join('d'))
   codeInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') join()
+    if (e.key === 'Enter') join('g')
   })
   nameInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') createBtn.click()
-  })
-  codeInput.addEventListener('input', () => {
-    const pos = codeInput.selectionStart ?? 0
-    codeInput.value = normalizeRoom(codeInput.value)
-    codeInput.setSelectionRange(pos, pos)
+    if (e.key === 'Enter') commitName()
   })
 
-  wrap.append(brand, form, el('p', { class: 'footnote' }, '无需注册 · 无需服务器 · 纯静态页面直连'))
+  wrap.append(
+    brand,
+    nameField,
+    picks,
+    joinCard,
+    el('p', { class: 'footnote' }, '无需注册 · 无需服务器 · 纯静态页面直连'),
+  )
   app.replaceChildren(wrap)
   nameInput.focus()
 }
@@ -336,14 +342,14 @@ function mountGame(code: string): GameView {
       { class: 'share' },
       (() => {
         const input = el('input', { readonly: 'readonly' }) as HTMLInputElement
-        input.value = shareUrl(code)
+        input.value = shareUrl(code, 'g')
         input.addEventListener('focus', () => input.select())
         return input
       })(),
       (() => {
         const btn = el('button', { class: 'btn btn-ghost', type: 'button' }, '复制') as HTMLButtonElement
         btn.addEventListener('click', async () => {
-          const ok = await copyText(shareUrl(code))
+          const ok = await copyText(shareUrl(code, 'g'))
           toast(ok ? '链接已复制，发给朋友吧' : '复制失败，请手动选中链接')
         })
         return btn
@@ -953,20 +959,11 @@ function mountGame(code: string): GameView {
   }
 }
 
-function shareUrl(code: string): string {
-  // Keep any ?sharecode= (host-level gate) but drop our own ?name= so the guest
-  // is asked for their nickname instead of inheriting the sender's.
-  const url = new URL(location.href)
-  url.searchParams.delete('name')
-  url.hash = `#/r/${code}`
-  return url.toString()
-}
-
 /* ------------------------------------------------------------------ */
 /* bootstrap                                                          */
 /* ------------------------------------------------------------------ */
 
-let current: GameView | null = null
+let current: GameView | DgView | null = null
 
 function render() {
   current?.destroy()
@@ -981,6 +978,7 @@ function render() {
 
   const r = route()
   if (r.kind === 'lobby') renderLobby()
+  else if (r.kind === 'drawguess') current = mountDrawGuess(r.code, pendingName || 'Player')
   else current = mountGame(r.code)
 }
 

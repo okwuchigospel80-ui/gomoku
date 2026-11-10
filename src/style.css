@@ -996,3 +996,383 @@ button:disabled {
 .pair-badge[hidden] {
   display: none;
 }
+
+/* The `hidden` attribute must beat component display rules like `.panel{display:flex}`
+   and `.btn{display:inline-flex}`, otherwise hidden panels keep showing. */
+[hidden] {
+  display: none !important;
+}
+
+/* ---------- lobby: game picker ---------- */
+
+.lobby-home {
+  width: min(720px, 100%);
+}
+
+.name-card {
+  padding: 16px 18px;
+}
+
+.game-picks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.game-card {
+  background: linear-gradient(180deg, var(--panel), var(--bg-soft));
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+}
+
+.game-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.game-card-mark {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 0.95rem;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid rgba(232, 177, 101, 0.3);
+}
+
+.game-card h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 640;
+  letter-spacing: -0.01em;
+}
+
+.game-card-head p {
+  margin: 3px 0 0;
+  font-size: 0.76rem;
+  color: var(--text-faint);
+  line-height: 1.45;
+}
+
+.game-card-detail {
+  margin: 0;
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 9px;
+}
+
+.game-card .btn {
+  margin-top: auto;
+}
+
+/* ---------- 你画我猜 ---------- */
+
+.dg-game {
+  grid-template-columns: minmax(320px, 1fr) 336px;
+}
+
+.dg-wrap {
+  min-width: 0;
+}
+
+.dg-frame {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  background: #f6f0e3;
+}
+
+.dg-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.dg-canvas-disabled {
+  cursor: default;
+}
+
+.dg-strip {
+  flex-wrap: wrap;
+  gap: 8px 10px;
+}
+
+.dg-chip {
+  font-size: 0.76rem;
+  font-weight: 560;
+  padding: 3px 9px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.dg-timer {
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  border-color: rgba(232, 177, 101, 0.34);
+  background: var(--accent-soft);
+  min-width: 52px;
+  text-align: center;
+}
+
+.dg-role {
+  margin-left: auto;
+}
+
+.dg-role-drawer {
+  color: var(--ok);
+  border-color: rgba(95, 191, 127, 0.34);
+  background: rgba(95, 191, 127, 0.12);
+}
+
+.dg-word-panel {
+  gap: 10px;
+}
+
+.dg-word-hint {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #1a1d20;
+  border: 1px solid #2c3135;
+}
+
+.dg-word-hint.drawer {
+  background: linear-gradient(135deg, rgba(232, 177, 101, 0.14), rgba(232, 177, 101, 0.04));
+  border-color: rgba(232, 177, 101, 0.34);
+}
+
+.dg-word-hint.done {
+  opacity: 0.7;
+}
+
+.dg-word {
+  font-size: 1.12rem;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+}
+
+.dg-word-meta {
+  font-size: 0.72rem;
+  color: var(--text-faint);
+}
+
+.dg-slots {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: 4px;
+}
+
+.dg-slot {
+  width: 22px;
+  height: 26px;
+  border-bottom: 2px solid var(--line);
+  display: block;
+}
+
+.dg-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.dg-actions .btn {
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  flex: 1 1 auto;
+}
+
+.dg-prompt {
+  min-height: 1.2em;
+}
+
+.dg-guess-row {
+  display: flex;
+  gap: 8px;
+}
+
+.dg-guess-row input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 0.88rem;
+  color: var(--text);
+  background: #15171a;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 10px 12px;
+  outline: none;
+}
+
+.dg-guess-row input:focus {
+  border-color: rgba(232, 177, 101, 0.62);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.dg-guess-row .btn {
+  flex: none;
+  padding: 10px 18px;
+  font-size: 0.86rem;
+}
+
+.dg-log {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 156px;
+  overflow-y: auto;
+}
+
+.dg-guess-log-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 9px;
+  background: #1a1d20;
+  border-radius: 7px;
+  font-size: 0.78rem;
+  border-left: 2px solid rgba(255, 255, 255, 0.08);
+}
+
+.dg-guess-log-row.wrong {
+  border-left-color: rgba(226, 106, 95, 0.55);
+}
+
+.dg-guess-log-name {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 0.72rem;
+  max-width: 62px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dg-guess-log-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dg-guess-log-mark {
+  flex: none;
+  color: var(--bad);
+  font-weight: 700;
+}
+
+.dg-scoreboard {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.dg-score-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 10px;
+  background: #1a1d20;
+  border: 1px solid #2c3135;
+  border-radius: 9px;
+  font-size: 0.85rem;
+}
+
+.dg-score-row.self {
+  border-color: rgba(232, 177, 101, 0.34);
+  background: rgba(232, 177, 101, 0.07);
+}
+
+.dg-score-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dg-score-total {
+  font-weight: 680;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.dg-round-row {
+  display: flex;
+  gap: 9px;
+  padding: 3px 2px;
+  font-size: 0.74rem;
+  color: var(--text-dim);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  font-variant-numeric: tabular-nums;
+}
+
+.dg-round-row .n {
+  width: 26px;
+  flex: none;
+  color: var(--text-faint);
+}
+
+.dg-round-row .c {
+  flex: 1;
+}
+
+.dg-overlay-host:empty {
+  display: none;
+}
+
+.dg-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 13, 15, 0.72);
+  backdrop-filter: blur(3px);
+  display: grid;
+  place-items: center;
+  z-index: 30;
+  animation: fade 0.24s ease-out both;
+}
+
+@media (max-width: 860px) {
+  .game-picks {
+    grid-template-columns: 1fr;
+  }
+
+  .dg-game {
+    grid-template-columns: 1fr;
+    width: min(560px, 100%);
+  }
+}
+
+.join-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+@media (max-width: 480px) {
+  .join-row {
+    grid-template-columns: 1fr;
+  }
+}

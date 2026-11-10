@@ -10,6 +10,9 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "isolatedModules": true,
+    // `node --test src/*.test.ts` resolves imports with Node's ESM rules, which
+    // require an explicit extension. Vite accepts the same specifiers.
+    "allowImportingTsExtensions": true,
     "noEmit": true,
     "types": ["vite/client"]
   },
