@@ -8,3 +8,6 @@ gomoku-static.zip
 
 # Private: card code -> real meaning. Never commit.
 card-legend.md
+
+# 私密：使用说明与卡片对照表，不进公开仓库
+使用说明.md
