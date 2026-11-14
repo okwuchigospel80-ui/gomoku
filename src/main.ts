@@ -393,7 +393,7 @@ function mountGame(code: string): GameView {
   /** Current identity; may change when a bound partner is adopted. */
   const myName = (): string => room.name
 
-  let lastPosition: Replay = replay([], room.state.size)
+  let lastPosition: Replay = replay([], room.state.size, room.state.first)
   let view: BoardView | null = null
   let status: ConnStatus = 'connecting'
   let peers: PlayerInfo[] = room.activePeers()
@@ -424,11 +424,15 @@ function mountGame(code: string): GameView {
   const pairBadge = el('div', { class: 'pair-badge' })
   pairBadge.hidden = true
 
+  const openerBadge = el('div', { class: 'opener-badge' })
+  openerBadge.hidden = true
+
   const roomPanel = el(
     'div',
     { class: 'panel' },
     el('div', { class: 'panel-head' }, el('span', {}, '房间'), statusEl),
     roomCodeEl,
+    openerBadge,
     pairBadge,
     el(
       'div',
@@ -633,7 +637,7 @@ function mountGame(code: string): GameView {
     const c = myColor()
     if (c === null) return false
     if (myUndosLeft() <= 0) return false
-    return undoTarget(room.state.hist, room.state.size, c) !== null
+    return undoTarget(room.state.hist, room.state.size, c, room.state.first) !== null
   }
 
   function tryPlace(index: number) {
@@ -669,7 +673,7 @@ function mountGame(code: string): GameView {
   }
 
   function onState(state: GameState) {
-    lastPosition = replay(state.hist, state.size)
+    lastPosition = replay(state.hist, state.size, state.first)
     view?.setGridSize(state.size)
     view?.setPosition(lastPosition.board, winCells(), lastMoveIndex())
     // A hidden tab throttles requestAnimationFrame, so stones would sit half-drawn
@@ -805,6 +809,7 @@ function mountGame(code: string): GameView {
     const r = result()
     view!.nextColor = r.kind === 'playing' ? lastPosition.turn : BLACK
     turnDot.className = `stone-dot ${(lastPosition.turn === BLACK ? 'black' : 'white')}`
+    renderOpenerBadge()
 
     if (r.kind === 'win') {
       const mine = r.winner === c
@@ -854,6 +859,23 @@ function mountGame(code: string): GameView {
         el('span', { class: 'dim' }, ` · 你是${colorLabel(c!)}`),
       )
     }
+  }
+
+  /**
+   * Small line under the room code: who took black this game. The opener
+   * alternates between games, so both players need to see whose turn it is to
+   * open rather than assuming the same person always starts.
+   */
+  function renderOpenerBadge() {
+    const first = room.state.first
+    const seat = first === BLACK ? room.state.seats.black : room.state.seats.white
+    if (!seat) {
+      openerBadge.hidden = true
+      return
+    }
+    const mine = first === myColor()
+    openerBadge.textContent = `本局 ${seat.name} 执黑先手${mine ? '（你）' : ''}`
+    openerBadge.hidden = false
   }
 
   function seatRow(color: Color): HTMLElement {
@@ -919,7 +941,7 @@ function mountGame(code: string): GameView {
     const start = Math.max(0, lastPosition.placed - total)
     for (let n = lastPosition.placed; n > start; n--) {
       const i = room.state.hist[lastPosition.landed[n - 1]]
-      const color = colorOf(n - 1)
+      const color = colorOf(n - 1, room.state.first)
       const x = i % size
       const y = Math.floor(i / size)
       const coord = `${AXIS[x]}${size - y}`
@@ -966,7 +988,10 @@ function mountGame(code: string): GameView {
         : '棋盘上已标出获胜连子'
 
     const again = el('button', { class: 'btn btn-primary', type: 'button' }, '再来一局') as HTMLButtonElement
-    again.addEventListener('click', () => room.reset())
+    again.addEventListener('click', () => {
+      room.reset()
+      toast(openerLine('新一局开始'))
+    })
 
     const close = el('button', { class: 'btn btn-ghost', type: 'button' }, '看看棋盘') as HTMLButtonElement
     close.addEventListener('click', () => {
@@ -993,7 +1018,7 @@ function mountGame(code: string): GameView {
   undoBtn.addEventListener('click', () => {
     const c = myColor()
     if (c === null || !canUndo()) return
-    const target = undoTarget(room.state.hist, room.state.size, c)
+    const target = undoTarget(room.state.hist, room.state.size, c, room.state.first)
     if (target === null) return
     room.undoTo(target, c)
     toast(`已悔棋，还剩 ${Math.max(0, myUndosLeft() - 1)} 次`)
@@ -1008,8 +1033,20 @@ function mountGame(code: string): GameView {
 
   resetBtn.addEventListener('click', () => {
     room.reset()
-    toast('已重新开局')
+    toast(openerLine())
   })
+
+  /**
+   * Say who opens the new game. The opener alternates every game, so without
+   * this line "重新开局" looks identical to the previous game.
+   */
+  function openerLine(prefix = '已重新开局'): string {
+    // `reset()` already flipped `first`, so this reads the NEW game.
+    const first = room.state.first
+    const seat = first === BLACK ? room.state.seats.black : room.state.seats.white
+    const name = seat?.name ?? colorLabel(first)
+    return `${prefix} · ${name} 执黑先手`
+  }
 
   settingsBtn.addEventListener('click', () => {
     settingsOpen = !settingsOpen

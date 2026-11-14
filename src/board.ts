@@ -62,7 +62,15 @@ export function winAt(
   return null
 }
 
-export const colorOf = (moveNumber: number): Color => (moveNumber % 2 === 0 ? BLACK : WHITE)
+/**
+ * Colour of the move at `moveNumber` (0-based) when `first` opens the game.
+ *
+ * `first` exists because the players alternate who takes black BETWEEN games:
+ * game 1 black-to-move-as-seat-A, game 2 seat-B takes black, and so on. Inside a
+ * game the two colours still alternate every move.
+ */
+export const colorOf = (moveNumber: number, first: Color = BLACK): Color =>
+  (moveNumber % 2 === 0 ? first : other(first))
 export const other = (c: Color): Color => (c === BLACK ? WHITE : BLACK)
 
 export interface Replay {
@@ -78,7 +86,7 @@ export interface Replay {
 }
 
 /** Rebuild the whole position from the move list. Illegal entries are skipped. */
-export function replay(hist: readonly number[], size: number): Replay {
+export function replay(hist: readonly number[], size: number, first: Color = BLACK): Replay {
   const total = cellCount(size)
   const board = new Uint8Array(total)
   const landed: number[] = []
@@ -89,7 +97,7 @@ export function replay(hist: readonly number[], size: number): Replay {
     if (!Number.isInteger(i) || i < 0 || i >= total) continue
     if (board[i] !== EMPTY) continue
 
-    const color = colorOf(landed.length)
+    const color = colorOf(landed.length, first)
     board[i] = color
     landed.push(h)
 
@@ -104,7 +112,7 @@ export function replay(hist: readonly number[], size: number): Replay {
   const placed = landed.length
   if (outcome.status === 'playing' && placed >= total) outcome = { status: 'draw' }
 
-  return { board, size, outcome, placed, turn: colorOf(placed), landed }
+  return { board, size, outcome, placed, turn: colorOf(placed, first), landed }
 }
 
 /**
@@ -115,10 +123,15 @@ export function replay(hist: readonly number[], size: number): Replay {
  * see the reply you want to try something else. Returns null when that colour
  * has not placed a stone yet.
  */
-export function undoTarget(hist: readonly number[], size: number, color: Color): number | null {
-  const { landed } = replay(hist, size)
+export function undoTarget(
+  hist: readonly number[],
+  size: number,
+  color: Color,
+  first: Color = BLACK,
+): number | null {
+  const { landed } = replay(hist, size, first)
   for (let k = landed.length - 1; k >= 0; k--) {
-    if (colorOf(k) === color) return landed[k]
+    if (colorOf(k, first) === color) return landed[k]
   }
   return null
 }

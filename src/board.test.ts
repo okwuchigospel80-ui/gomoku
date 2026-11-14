@@ -270,3 +270,60 @@ test('every supported size normalises to itself and junk falls back to 15', () =
   assert.equal(normalizeSize(13), 15, 'the old 13 board is no longer offered')
   assert.equal(normalizeSize('x'), 15)
 })
+
+/* ---------------- alternating openers between games ---------------- */
+
+test('inside a game the colours still alternate every move', () => {
+  assert.deepEqual(
+    [0, 1, 2, 3].map((n) => colorOf(n, BLACK)),
+    [BLACK, WHITE, BLACK, WHITE],
+  )
+  assert.deepEqual(
+    [0, 1, 2, 3].map((n) => colorOf(n, WHITE)),
+    [WHITE, BLACK, WHITE, BLACK],
+  )
+})
+
+test('the opener defaults to black when not specified', () => {
+  for (let n = 0; n < 6; n++) assert.equal(colorOf(n), colorOf(n, BLACK))
+})
+
+test('replay honours a white opener', () => {
+  const size = 15
+  // Seat A (white this game) plays first at the centre, then B answers.
+  const hist = [idx(7, 7, size), idx(8, 8, size)]
+  const whiteFirst = replay(hist, size, WHITE)
+  assert.equal(whiteFirst.board[idx(7, 7, size)], WHITE)
+  assert.equal(whiteFirst.board[idx(8, 8, size)], BLACK)
+  assert.equal(whiteFirst.turn, WHITE, 'two moves played, white to move again')
+
+  const blackFirst = replay(hist, size, BLACK)
+  assert.equal(blackFirst.board[idx(7, 7, size)], BLACK)
+  assert.equal(blackFirst.board[idx(8, 8, size)], WHITE)
+  assert.equal(blackFirst.turn, BLACK)
+})
+
+test('a white opener wins as white', () => {
+  const size = 15
+  // White opens; odd indices belong to black, so black's stones are parked on
+  // a far row that never joins white's line.
+  const hist: number[] = []
+  for (let i = 0; i < 5; i++) {
+    hist.push(idx(3 + i, 3, size)) // white
+    if (i < 4) hist.push(idx(3 + i, 12, size)) // black, out of the way
+  }
+  const r = replay(hist, size, WHITE)
+  assert.equal(r.outcome.status, 'win')
+  assert.equal(r.outcome.status === 'win' && r.outcome.winner, WHITE)
+})
+
+test('undo targets follow the opener, not a fixed seat', () => {
+  const size = 15
+  const hist = [idx(7, 7, size), idx(8, 8, size), idx(9, 9, size)]
+  // White opened: moves 0 and 2 are white's, move 1 is black's.
+  assert.equal(undoTarget(hist, size, WHITE, WHITE), 2)
+  assert.equal(undoTarget(hist, size, BLACK, WHITE), 1)
+  // With black opening the same history belongs the other way round.
+  assert.equal(undoTarget(hist, size, BLACK, BLACK), 2)
+  assert.equal(undoTarget(hist, size, WHITE, BLACK), 1)
+})

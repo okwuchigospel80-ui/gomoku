@@ -18,7 +18,9 @@
 
 import mqtt, { type MqttClient } from 'mqtt'
 import {
+  BLACK,
   DEFAULT_SIZE,
+  WHITE,
   normalizeSize,
   randomRoomCode,
   type BoardSize,
@@ -57,6 +59,12 @@ export interface GameState {
   started: boolean
   /** How many undos each colour has left. */
   undosLeft: { black: number; white: number }
+  /**
+   * Colour that moves first in THIS game. Flipped on every new game so the
+   * players take turns opening: game 1 seat A is black, game 2 seat B is black.
+   * Without it a seat would open every single game forever.
+   */
+  first: Color
   /** Set when a player concedes; the other colour wins. */
   resigned: Color | null
   /**
@@ -86,6 +94,7 @@ export const emptyState = (): GameState => ({
   creator: null,
   started: false,
   undosLeft: { black: UNDOS_PER_PLAYER, white: UNDOS_PER_PLAYER },
+  first: BLACK,
   resigned: null,
   rewards: [],
   winPaid: false,
@@ -182,6 +191,9 @@ function sanitize(raw: unknown): GameState | null {
     creator: typeof o.creator === 'string' ? o.creator : null,
     started: o.started === true,
     undosLeft: { black: count(undos.black), white: count(undos.white) },
+    // Rooms created before alternating openers default to black, which is how
+    // they already played.
+    first: o.first === WHITE ? WHITE : BLACK,
     resigned: o.resigned === 1 || o.resigned === 2 ? o.resigned : null,
     rewards,
     winPaid: o.winPaid === true,
@@ -662,12 +674,17 @@ export class Room {
     })
   }
 
+  /**
+   * Start a new game. The opener alternates: whoever took black last game takes
+   * white this time. Undo budgets reset with it.
+   */
   reset() {
     if (!this.ready) return
     this.commit({
       ...this.state,
       hist: [],
       started: false,
+      first: this.state.first === BLACK ? WHITE : BLACK,
       resigned: null,
       undosLeft: { black: UNDOS_PER_PLAYER, white: UNDOS_PER_PLAYER },
       // The ledger is per-game: players have already claimed it into their own
