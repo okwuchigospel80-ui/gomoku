@@ -70,7 +70,36 @@ export function derive(profile: Profile): Profile {
   return profile
 }
 
-const profileTopic = (name: string) => `${TOPIC_ROOT}/u/${encodeURIComponent(name)}`
+/**
+ * Accounts are keyed by a normalised nickname.
+ *
+ * Seats are matched case- and whitespace-insensitively (`sameName`), but the
+ * topic was built from the raw name — so typing "C" instead of "c" silently
+ * opened a second, empty account with no points and no cards. Normalising here
+ * makes " C " and "c" the same ledger, which is what "the name is the account"
+ * has to mean to stay consistent with seating.
+ */
+export const accountKey = (name: string): string => name.trim().toLowerCase()
+
+const profileTopic = (name: string) => `${TOPIC_ROOT}/u/${encodeURIComponent(accountKey(name))}`
+
+/**
+ * Every case variant of a name that could still hold a legacy ledger.
+ *
+ * Accounts used to be keyed by the raw typed name, so "C" and "c" were two
+ * ledgers. New writes all go to the lowercase topic; this list makes a client
+ * read the old variants too, so nothing earned before the change disappears.
+ */
+export function legacyTopics(name: string): string[] {
+  const key = accountKey(name)
+  if (!key) return []
+  const out = new Set<string>()
+  const variants = [key, key.toUpperCase(), name.trim()]
+  // Title-case covers the common "Alice" / "chris" mix.
+  variants.push(key.charAt(0).toUpperCase() + key.slice(1))
+  for (const v of variants) if (v) out.add(`${TOPIC_ROOT}/u/${encodeURIComponent(v)}`)
+  return [...out]
+}
 
 function sanitizeEntry(raw: unknown): Entry | null {
   if (typeof raw !== 'object' || raw === null) return null
@@ -165,7 +194,8 @@ export class ProfileStore {
     client.on('connect', () => {
       this.connected = true
       this.onStatus('online')
-      client.subscribe(profileTopic(this.name), { qos: 1 })
+      // Read the canonical topic plus every older case variant of this name.
+      client.subscribe(legacyTopics(this.name), { qos: 1 })
       // Never write before the retained profile has had a chance to arrive,
       // otherwise a fresh empty profile would overwrite a real balance.
       if (this.readyTimer) clearTimeout(this.readyTimer)

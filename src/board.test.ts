@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
+  AXIS,
   BLACK,
   BOARD_SIZES,
   DEFAULT_SIZE,
@@ -238,4 +239,34 @@ test('colorOf alternates as expected', () => {
   assert.equal(colorOf(1), WHITE)
   assert.equal(colorOf(2), BLACK)
   assert.equal(colorOf(3), WHITE)
+})
+
+/* ---------------- board sizes ---------------- */
+
+test('the smallest board is 15 and three larger steps are offered', () => {
+  assert.deepEqual([...BOARD_SIZES], [15, 19, 21, 23])
+  assert.equal(Math.min(...BOARD_SIZES), 15)
+  assert.equal(BOARD_SIZES.length, 4)
+  assert.equal(DEFAULT_SIZE, 15)
+})
+
+test('board sizes are strictly ascending', () => {
+  for (let i = 1; i < BOARD_SIZES.length; i++) {
+    assert.ok(BOARD_SIZES[i] > BOARD_SIZES[i - 1])
+  }
+})
+
+test('column labels cover the largest board and skip I and O', () => {
+  const largest = Math.max(...BOARD_SIZES)
+  assert.ok(AXIS.length >= largest, `AXIS has ${AXIS.length}, need ${largest}`)
+  assert.equal(AXIS.includes('I'), false, 'I reads as 1')
+  assert.equal(AXIS.includes('O'), false, 'O reads as 0')
+  assert.equal(new Set(AXIS).size, AXIS.length, 'labels must be unique')
+})
+
+test('every supported size normalises to itself and junk falls back to 15', () => {
+  for (const n of BOARD_SIZES) assert.equal(normalizeSize(n), n)
+  assert.equal(normalizeSize(9), 15, 'the old 9 board is no longer offered')
+  assert.equal(normalizeSize(13), 15, 'the old 13 board is no longer offered')
+  assert.equal(normalizeSize('x'), 15)
 })

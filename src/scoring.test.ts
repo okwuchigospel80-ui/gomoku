@@ -4,7 +4,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { CARDS, UNDO_PENALTY, WIN_POINTS, CARD_BY_ID } from './cards.ts'
-import { derive, emptyProfile, type Entry, type Profile } from './profile.ts'
+import { accountKey, derive, emptyProfile, legacyTopics, type Entry, type Profile } from './profile.ts'
+import { legacyPairTopics, pairTopic } from './pairing.ts'
 
 const pts = (id: string, delta: number): Entry => ({ id, kind: 'points', delta, reason: 't', at: 0 })
 const buy = (id: string, cardId: string): Entry => ({ id, kind: 'buy', cardId, at: 0 })
@@ -150,4 +151,42 @@ test('the five private cards ship as initials, not real words', () => {
     CARDS.filter((c) => c.group === 'intimate').map((c) => c.name),
     ['QQ卡', 'SW卡', 'KJ卡', 'ZA卡', 'HH卡'],
   )
+})
+
+/* ---------------- account keys are case-insensitive ---------------- */
+
+test('account keys ignore case and surrounding spaces', () => {
+  // Seats are matched by `sameName`, which is case-insensitive. If the account
+  // topic were not, typing "C" instead of "c" would open an empty second ledger
+  // and look exactly like the points had vanished.
+  assert.equal(accountKey('C'), 'c')
+  assert.equal(accountKey('  xchcy '), 'xchcy')
+  assert.equal(accountKey('XcHcY'), 'xchcy')
+  assert.equal(accountKey('c'), accountKey('C'))
+})
+
+test('every case variant resolves to one canonical account topic', () => {
+  const topics = (name: string) => legacyTopics(name).map((t) => decodeURIComponent(t.split('/u/')[1]))
+  // The first entry is the canonical topic new writes go to.
+  assert.equal(topics('C')[0], 'c')
+  assert.equal(topics('c')[0], 'c')
+  assert.equal(topics(' Alice ')[0], 'alice')
+  // Older variants are still read, so pre-normalisation ledgers stay visible.
+  const variants = topics('Alice')
+  assert.ok(variants.includes('alice'))
+  assert.ok(variants.includes('ALICE'))
+  assert.ok(variants.includes('Alice'))
+})
+
+test('pairings are keyed the same way as accounts', () => {
+  assert.equal(decodeURIComponent(pairTopic('C').split('/pair/')[1]), 'c')
+  assert.equal(pairTopic('c'), pairTopic('C'))
+  const variants = legacyPairTopics('C').map((t) => decodeURIComponent(t.split('/pair/')[1]))
+  assert.ok(variants.includes('c'))
+  assert.ok(variants.includes('C'))
+})
+
+test('an empty name never produces an account topic', () => {
+  assert.deepEqual(legacyTopics('   '), [])
+  assert.deepEqual(legacyPairTopics(''), [])
 })

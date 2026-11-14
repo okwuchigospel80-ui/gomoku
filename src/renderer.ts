@@ -28,6 +28,12 @@ export class BoardView {
   private lastMove: number | null = null
   private raf = 0
   private dirty = true
+  /** Settles throttled pop-in animations when the tab becomes visible again. */
+  private onVisible = () => {
+    if (document.hidden) return
+    for (const s of this.stones.values()) s.born = 1
+    this.dirty = true
+  }
 
   /** Colour the hover ghost shows; the app keeps this in sync with whose turn it is. */
   nextColor: Color = BLACK
@@ -39,6 +45,9 @@ export class BoardView {
     this.ctx = ctx
     this.resize()
     window.addEventListener('resize', () => this.resize())
+    // Coming back from a hidden tab: settle any pop-in that the throttled loop
+    // never had the frames to finish, so the first visible frame is correct.
+    document.addEventListener('visibilitychange', this.onVisible)
     canvas.addEventListener('pointermove', (e) => this.onPointerMove(e))
     canvas.addEventListener('pointerleave', () => {
       this.hover = null
@@ -137,6 +146,22 @@ export class BoardView {
       this.draw(needsFrame)
     }
     this.raf = requestAnimationFrame(this.loop)
+  }
+
+  /**
+   * Draw immediately instead of waiting for the next animation frame — but only
+   * when the page is actually hidden.
+   *
+   * requestAnimationFrame is throttled to ~0 fps in a background tab, so a stone
+   * that arrived while the tab was hidden would keep `born = 0` and stay frozen at
+   * its pop-in scale until the tab was focused again, which looked like the board
+   * had stopped updating. While visible, the normal loop keeps the animation.
+   */
+  paintIfHidden() {
+    if (typeof document === 'undefined' || !document.hidden) return
+    for (const s of this.stones.values()) s.born = 1
+    this.dirty = false
+    this.draw(false)
   }
 
   private draw(animate: boolean) {
@@ -359,5 +384,6 @@ export class BoardView {
 
   dispose() {
     cancelAnimationFrame(this.raf)
+    document.removeEventListener('visibilitychange', this.onVisible)
   }
 }

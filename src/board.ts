@@ -1,10 +1,11 @@
 // Pure gomoku rules. The board side length is a parameter rather than a module
-// constant, so a room can switch between 9/13/15/19 without reloading the page.
+// constant, so a room can switch between the offered sizes without reloading.
 // Everything here is a deterministic function of (history, size) — that is what
 // makes multi-client sync trivial: equal history means an identical board.
 
 export const DEFAULT_SIZE = 15
-export const BOARD_SIZES = [9, 13, 15, 19] as const
+/** 15 is the floor; the three larger steps give a longer, roomier game. */
+export const BOARD_SIZES = [15, 19, 21, 23] as const
 export type BoardSize = (typeof BOARD_SIZES)[number]
 
 export const EMPTY = 0
@@ -12,8 +13,11 @@ export const BLACK = 1
 export const WHITE = 2
 export type Color = 1 | 2
 
-/** Column labels. 19 entries covers the largest board we offer. */
-export const AXIS = 'ABCDEFGHIJKLMNOPQRS'
+/**
+ * Column labels, I and O omitted so they are not read as 1 and 0.
+ * 23 entries covers the largest board we offer.
+ */
+export const AXIS = 'ABCDEFGHJKLMNPQRSTUVWXY'
 
 export const idx = (x: number, y: number, size: number) => y * size + x
 export const xy = (i: number, size: number): [number, number] => [i % size, Math.floor(i / size)]

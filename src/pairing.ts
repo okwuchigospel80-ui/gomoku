@@ -29,7 +29,21 @@ export interface Pair {
   at: number
 }
 
-const pairTopic = (owner: string) => `${TOPIC_ROOT}/pair/${encodeURIComponent(owner)}`
+// Same rule as profiles: the owner key is normalised, or "C" and "c" would be
+// two different bindings for the same person.
+export const pairTopic = (owner: string) =>
+  `${TOPIC_ROOT}/pair/${encodeURIComponent(owner.trim().toLowerCase())}`
+
+/** Case variants that may still hold a pairing written before keys were normalised. */
+export function legacyPairTopics(owner: string): string[] {
+  const key = owner.trim().toLowerCase()
+  if (!key) return []
+  const out = new Set<string>()
+  for (const v of [key, key.toUpperCase(), owner.trim(), key.charAt(0).toUpperCase() + key.slice(1)]) {
+    if (v) out.add(`${TOPIC_ROOT}/pair/${encodeURIComponent(v)}`)
+  }
+  return [...out]
+}
 
 const norm = (s: string) => s.trim().toLowerCase()
 
@@ -99,7 +113,7 @@ export class PairStore {
 
     client.on('connect', () => {
       this.events.onStatus(true)
-      client.subscribe(pairTopic(this.owner), { qos: 1 })
+      client.subscribe(legacyPairTopics(this.owner), { qos: 1 })
       if (this.readyTimer) clearTimeout(this.readyTimer)
       // If nothing arrives, the room has never been paired.
       this.readyTimer = setTimeout(() => {

@@ -39,8 +39,10 @@ type Route =
 function route(): Route {
   const hash = location.hash.replace(/^#/, '')
   // `#/d/<code>` is 你画我猜, `#/g/<code>` and the legacy `#/r/<code>` are gomoku.
+  // A draw-guess link only resolves while that game is offered; otherwise an old
+  // invite would open a screen the lobby no longer lists.
   const dg = /^\/d\/([A-Za-z0-9-]+)/.exec(hash)
-  if (dg) {
+  if (dg && DRAWGUESS_ENABLED) {
     const code = normalizeRoom(dg[1])
     if (code.length >= 4) return { kind: 'drawguess', code }
   }
@@ -130,6 +132,78 @@ function renderGate() {
 }
 
 /* ------------------------------------------------------------------ */
+/* name gate for direct room links                                     */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Shown when someone opens a room link without a nickname on this device.
+ *
+ * A shared link deliberately drops `?name=` (see `shareUrl`), so a guest always
+ * lands here first. Without this they used to join as the literal name
+ * "Player", which made them the wrong person on screen and — because seats are
+ * matched by nickname — could even collide with another guest.
+ */
+function renderNameGate(code: string, game: 'g' | 'd') {
+  const input = el('input', {
+    id: 'guest-name',
+    type: 'text',
+    maxlength: '16',
+    placeholder: '你的昵称',
+    autocomplete: 'nickname',
+  }) as HTMLInputElement
+
+  const btn = el('button', { class: 'btn btn-primary', type: 'button' }, '进入房间') as HTMLButtonElement
+  const err = el('p', { class: 'gate-err' }, '')
+
+  const submit = () => {
+    const v = input.value.trim().slice(0, 16)
+    if (!v) {
+      err.textContent = '请先填一个昵称'
+      input.focus()
+      return
+    }
+    pendingName = v
+    storeName(v)
+    render()
+  }
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') submit()
+  })
+  input.addEventListener('input', () => {
+    err.textContent = ''
+  })
+  btn.addEventListener('click', submit)
+
+  const wrap = el(
+    'div',
+    { class: 'lobby gate' },
+    el(
+      'div',
+      { class: 'brand' },
+      el('div', { class: 'brand-mark' }, el('i')),
+      el(
+        'div',
+        {},
+        el('h1', {}, game === 'g' ? '五子棋' : '你画我猜'),
+        el('p', {}, `房间 ${formatRoom(code)}`),
+      ),
+    ),
+    el(
+      'div',
+      { class: 'card' },
+      el('div', { class: 'field' }, el('label', { for: 'guest-name' }, '昵称'), input),
+      btn,
+      err,
+      el('p', { class: 'hint' }, '昵称就是你和这个房间里积分、卡包的账本名，填一次会记在这台设备上。'),
+    ),
+  )
+
+  app.replaceChildren(wrap)
+  input.focus()
+}
+
+/* ------------------------------------------------------------------ */
 /* lobby                                                              */
 /* ------------------------------------------------------------------ */
 
@@ -144,7 +218,17 @@ interface GameEntry {
   accent: string
 }
 
-const GAMES: GameEntry[] = [
+/**
+ * Whether 你画我猜 is offered.
+ *
+ * Its code is complete and tested, but it is switched off for now: the live site
+ * ships gomoku only. Flip this to `true` to bring it back — nothing else needs to
+ * change. Direct `#/d/...` links are refused while it is off, so an old invite
+ * cannot drop someone into a screen the lobby no longer offers.
+ */
+const DRAWGUESS_ENABLED = false
+
+const ALL_GAMES: GameEntry[] = [
   {
     key: 'g',
     title: '五子棋',
@@ -160,6 +244,10 @@ const GAMES: GameEntry[] = [
     accent: '✎',
   },
 ]
+
+const GAMES: GameEntry[] = ALL_GAMES.filter(
+  (g) => g.key === 'g' || DRAWGUESS_ENABLED,
+)
 
 function renderLobby() {
   const wrap = el('div', { class: 'lobby lobby-home' })
@@ -232,9 +320,13 @@ function renderLobby() {
     spellcheck: 'false',
   }) as HTMLInputElement
 
-  const joinGomoku = el('button', { class: 'btn btn-ghost', type: 'button' }, '进五子棋') as HTMLButtonElement
-  const joinDraw = el('button', { class: 'btn btn-ghost', type: 'button' }, '进你画我猜') as HTMLButtonElement
-  const joinHint = el('p', { class: 'hint' }, '房间码本身分不出是哪个游戏，所以下面选了游戏再进。')
+  const joinBtn = el('button', { class: 'btn btn-ghost', type: 'button' }, '进入房间') as HTMLButtonElement
+  const joinDrawBtn = el('button', { class: 'btn btn-ghost', type: 'button' }, '进你画我猜') as HTMLButtonElement
+  const joinHint = el(
+    'p',
+    { class: 'hint' },
+    DRAWGUESS_ENABLED ? '房间码本身分不出是哪个游戏，所以下面选了游戏再进。' : '输入对方给的房间码即可加入。',
+  )
 
   codeInput.addEventListener('input', () => {
     const pos = codeInput.selectionStart ?? 0
@@ -247,7 +339,7 @@ function renderLobby() {
     { class: 'card' },
     el('div', { class: 'divider' }, '加入已有房间'),
     el('div', { class: 'field' }, el('label', { for: 'code' }, '房间码'), codeInput),
-    el('div', { class: 'join-row' }, joinGomoku, joinDraw),
+    DRAWGUESS_ENABLED ? el('div', { class: 'join-row' }, joinBtn, joinDrawBtn) : joinBtn,
     joinHint,
   )
 
@@ -262,8 +354,8 @@ function renderLobby() {
     gotoRoom(code, game)
   }
 
-  joinGomoku.addEventListener('click', () => join('g'))
-  joinDraw.addEventListener('click', () => join('d'))
+  joinBtn.addEventListener('click', () => join('g'))
+  joinDrawBtn.addEventListener('click', () => join('d'))
   codeInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') join('g')
   })
@@ -291,7 +383,8 @@ interface GameView {
 }
 
 function mountGame(code: string): GameView {
-  const room = new Room(code, pendingName || 'Player', {
+  // The name gate guarantees a nickname before a room is mounted.
+  const room = new Room(code, pendingName, {
     onStatus: (s, detail) => onStatus(s, detail),
     onState: (s) => onState(s),
     onPeers: (p) => onPeers(p),
@@ -579,6 +672,10 @@ function mountGame(code: string): GameView {
     lastPosition = replay(state.hist, state.size)
     view?.setGridSize(state.size)
     view?.setPosition(lastPosition.board, winCells(), lastMoveIndex())
+    // A hidden tab throttles requestAnimationFrame, so stones would sit half-drawn
+    // until the tab came back. Repaint immediately in that case only, which keeps
+    // the pop-in animation for the tab the player is actually looking at.
+    view?.paintIfHidden()
     view?.invalidate()
     if (document.activeElement !== sizeSelect) sizeSelect.value = String(state.size)
     ensurePairing(state)
@@ -977,8 +1074,24 @@ function render() {
   }
 
   const r = route()
-  if (r.kind === 'lobby') renderLobby()
-  else if (r.kind === 'drawguess') current = mountDrawGuess(r.code, pendingName || 'Player')
+  if (r.kind === 'lobby') {
+    // A stale `#/d/...` invite falls through to the lobby now that the game is
+    // switched off. Say so instead of silently landing on a different screen.
+    if (!DRAWGUESS_ENABLED && /^#\/d\//.test(location.hash)) {
+      toast('你画我猜暂时下线了')
+    }
+    renderLobby()
+    return
+  }
+
+  // A room link carries no nickname (share links strip `?name=`), so ask for one
+  // before joining instead of silently playing as "Player".
+  if (!pendingName.trim()) {
+    renderNameGate(r.code, r.kind === 'drawguess' ? 'd' : 'g')
+    return
+  }
+
+  if (r.kind === 'drawguess') current = mountDrawGuess(r.code, pendingName)
   else current = mountGame(r.code)
 }
 
